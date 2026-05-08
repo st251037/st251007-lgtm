@@ -1,0 +1,1015 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>スタイリッシュ 2D マイクラ風街づくりゲーム</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&display=swap');
+        
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: 'Noto Sans JP', sans-serif;
+            background-color: #1e293b; /* Fallback dark background */
+        }
+
+        #gameCanvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* グラスモーフィズムUIスタイル */
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.2);
+        }
+
+        .tool-btn {
+            transition: all 0.2s ease;
+        }
+        
+        .tool-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+        }
+
+        .tool-btn.active {
+            background: rgba(59, 130, 246, 0.5); /* Blue highlight */
+            border-color: rgba(96, 165, 250, 1);
+            box-shadow: 0 0 15px rgba(59, 130, 246, 0.5);
+        }
+
+        /* 選択不可にするクラス */
+        .no-select {
+            user-select: none;
+            -webkit-user-select: none;
+        }
+    </style>
+</head>
+<body class="text-white no-select">
+
+    <!-- ゲームキャンバス -->
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- UI レイヤー -->
+    <div class="absolute inset-0 pointer-events-none flex flex-col justify-between p-4 sm:p-6">
+        
+        <!-- ヘッダー情報 -->
+        <div class="flex justify-between items-start">
+            <div class="glass-panel rounded-2xl p-4 pointer-events-auto flex flex-col gap-3 min-w-[200px]">
+                <h1 class="text-xl font-bold tracking-wider text-white shadow-sm">PIONEER <span class="text-blue-300">VALLEY</span></h1>
+                
+                <div class="flex items-center gap-2 text-sm text-gray-100">
+                    <svg class="w-5 h-5 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+                    <span>人口: <span id="ui-population" class="font-bold text-lg text-white">0</span> 人</span>
+                </div>
+                
+                <div class="h-px bg-white/20 w-full my-1"></div>
+
+                <div class="flex flex-col gap-2 text-sm font-medium">
+                    <div class="flex justify-between items-center bg-black/20 rounded px-2 py-1">
+                        <span class="flex items-center gap-2"><div class="w-3 h-3 rounded-full bg-emerald-500"></div> 木材</span>
+                        <span id="ui-wood">0</span>
+                    </div>
+                    <div class="flex justify-between items-center bg-black/20 rounded px-2 py-1">
+                        <span class="flex items-center gap-2"><div class="w-3 h-3 bg-gray-400 rounded-sm"></div> 石材</span>
+                        <span id="ui-stone">0</span>
+                    </div>
+                    <div class="flex justify-between items-center bg-black/20 rounded px-2 py-1">
+                        <span class="flex items-center gap-2"><div class="w-3 h-3 bg-slate-600 rounded-sm border border-orange-400"></div> 鉄鉱石</span>
+                        <span id="ui-iron">0</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 操作説明 -->
+            <div class="glass-panel rounded-xl p-3 pointer-events-auto text-xs text-gray-200 text-right hidden sm:block">
+                <p class="font-bold mb-1">操作方法</p>
+                <p>移動: <kbd class="bg-white/20 px-1 rounded">W</kbd> <kbd class="bg-white/20 px-1 rounded">A</kbd> <kbd class="bg-white/20 px-1 rounded">S</kbd> <kbd class="bg-white/20 px-1 rounded">D</kbd></p>
+                <p>アクション: プレイヤーの隣をクリック</p>
+            </div>
+        </div>
+
+        <!-- ツールバー (画面下部) -->
+        <div class="flex justify-center w-full mb-4">
+            <div class="glass-panel rounded-full p-2 pointer-events-auto flex gap-2 shadow-2xl">
+                
+                <button class="tool-btn active flex items-center gap-2 px-4 py-2 rounded-full font-bold text-sm" onclick="setTool('gather')" id="btn-gather">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 10l-2 1m0 0l-2-1m2 1v2.5M20 7l-2 1m2-1l-2-1m2 1v2.5M14 4l-2-1-2 1M4 7l2-1M4 7l2 1M4 7v2.5M12 21l-2-1m2 1l2-1m-2 1v-2.5M6 18l-2-1v-2.5M18 18l2-1v-2.5"></path></svg>
+                    採集 (壊す)
+                </button>
+
+                <div class="w-px bg-white/20 mx-1"></div>
+
+                <button class="tool-btn flex items-center gap-2 px-4 py-2 rounded-full font-bold text-sm" onclick="setTool('house')" id="btn-house" title="木材x10, 石材x5 (+10 人口)">
+                    <svg class="w-5 h-5 text-orange-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
+                    家を作る
+                </button>
+
+                <button class="tool-btn flex items-center gap-2 px-4 py-2 rounded-full font-bold text-sm" onclick="setTool('road')" id="btn-road" title="石材x2 (移動速度アップ)">
+                    <svg class="w-5 h-5 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 10h16M4 14h16M4 18h16M4 6h16"></path></svg>
+                    道を敷く
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ゲームロジック -->
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // ゲーム定数
+        const TILE_SIZE = 48;
+        const WORLD_WIDTH = 50;
+        const WORLD_HEIGHT = 50;
+        
+        // タイルタイプ
+        const TILE = {
+            GRASS: 0,
+            TREE: 1,
+            ROCK: 2,
+            IRON: 3,
+            HOUSE: 4,
+            ROAD: 5
+        };
+
+        // コストと報酬設定
+        const RECIPES = {
+            house: { cost: { wood: 10, stone: 5 }, tile: TILE.HOUSE, pop: 10 },
+            road:  { cost: { stone: 2 }, tile: TILE.ROAD, pop: 0 }
+        };
+
+        const NPC_COLORS = ['#ef4444', '#f59e0b', '#10b981', '#8b5cf6', '#ec4899', '#06b6d4']; // 村人のカラーバリエーション
+
+        // ゲームステート
+        let world = [];
+        let particles = [];
+        let npcs = []; // 追加: 村人の配列
+        let tasks = []; // 追加: タスクの配列
+        let nextTaskId = 0;
+        let inventory = { wood: 0, stone: 0, iron: 0, population: 0 };
+        let currentTool = 'gather'; // gather, house, road
+        
+        // カメラステート
+        let camera = { x: 0, y: 0, targetX: 0, targetY: 0 };
+        
+        // プレイヤーステート
+        let player = {
+            x: Math.floor(WORLD_WIDTH / 2),
+            y: Math.floor(WORLD_HEIGHT / 2),
+            renderX: 0,
+            renderY: 0,
+            facing: 'down',
+            isMoving: false
+        };
+
+        // マウスステート
+        let mouse = { x: 0, y: 0, gridX: 0, gridY: 0, isHovering: false };
+        let keys = {};
+
+        // === 村人生成 ===
+        function spawnNPC(gridX, gridY) {
+            npcs.push({
+                x: gridX,
+                y: gridY,
+                renderX: gridX * TILE_SIZE,
+                renderY: gridY * TILE_SIZE,
+                facing: 'down',
+                color: NPC_COLORS[Math.floor(Math.random() * NPC_COLORS.length)],
+                moveTimer: Math.random() * 60, // 次の移動までの待機タイマー
+                state: 'idle', // 'idle', 'moving_to_task', 'working'
+                task: null,
+                path: [],
+                pathIndex: 0
+            });
+        }
+
+        // === 初期化処理 ===
+        function init() {
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+            
+            // 入力イベントリスナー
+            window.addEventListener('keydown', (e) => keys[e.key.toLowerCase()] = true);
+            window.addEventListener('keyup', (e) => keys[e.key.toLowerCase()] = false);
+            canvas.addEventListener('mousemove', handleMouseMove);
+            canvas.addEventListener('mousedown', handleMouseClick);
+
+            generateWorld();
+            
+            // プレイヤーの初期描画位置をセット
+            player.renderX = player.x * TILE_SIZE;
+            player.renderY = player.y * TILE_SIZE;
+            camera.x = player.renderX - canvas.width / 2;
+            camera.y = player.renderY - canvas.height / 2;
+
+            updateUI();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        // === ワールド生成 ===
+        function generateWorld() {
+            // シンプルなランダム生成アルゴリズム
+            for (let y = 0; y < WORLD_HEIGHT; y++) {
+                world[y] = [];
+                for (let x = 0; x < WORLD_WIDTH; x++) {
+                    // 中央エリアは草地（スポーン地点）
+                    if (Math.abs(x - player.x) < 3 && Math.abs(y - player.y) < 3) {
+                        world[y][x] = TILE.GRASS;
+                        continue;
+                    }
+
+                    let r = Math.random();
+                    if (r < 0.15) world[y][x] = TILE.TREE;
+                    else if (r < 0.22) world[y][x] = TILE.ROCK;
+                    else if (r < 0.25) world[y][x] = TILE.IRON;
+                    else world[y][x] = TILE.GRASS;
+                }
+            }
+        }
+
+        // === 入力とインタラクション ===
+        function handleMouseMove(e) {
+            const rect = canvas.getBoundingClientRect();
+            mouse.x = e.clientX - rect.left;
+            mouse.y = e.clientY - rect.top;
+            
+            // マウス座標をワールド座標のグリッドに変換
+            mouse.gridX = Math.floor((mouse.x + camera.x) / TILE_SIZE);
+            mouse.gridY = Math.floor((mouse.y + camera.y) / TILE_SIZE);
+            
+            // マウスが有効なグリッド内かチェック
+            mouse.isHovering = (mouse.gridX >= 0 && mouse.gridX < WORLD_WIDTH && mouse.gridY >= 0 && mouse.gridY < WORLD_HEIGHT);
+        }
+
+        function handleMouseClick(e) {
+            if (!mouse.isHovering) return;
+
+            // プレイヤーからの距離（チェビシェフ距離）
+            const dist = Math.max(Math.abs(mouse.gridX - player.x), Math.abs(mouse.gridY - player.y));
+            const targetTile = world[mouse.gridY][mouse.gridX];
+
+            // 遠隔クリックはNPCへの指示（タスク）
+            if (dist > 1) {
+                if (currentTool === 'gather') {
+                    if ([TILE.TREE, TILE.ROCK, TILE.IRON, TILE.HOUSE, TILE.ROAD].includes(targetTile)) {
+                        if (!tasks.some(t => t.x === mouse.gridX && t.y === mouse.gridY)) {
+                            tasks.push({ id: nextTaskId++, x: mouse.gridX, y: mouse.gridY, tool: currentTool, action: 'gather', tileType: targetTile, assigned: false, progress: 0, maxProgress: 40 });
+                            spawnFloatingText("指示完了", mouse.x, mouse.y, "#ffffff");
+                        }
+                    }
+                } else { // 建築
+                    if (targetTile === TILE.GRASS || targetTile === TILE.ROAD) {
+                        if (!tasks.some(t => t.x === mouse.gridX && t.y === mouse.gridY)) {
+                            const recipe = RECIPES[currentTool];
+                            if (canAfford(recipe.cost)) {
+                                deductCost(recipe.cost);
+                                tasks.push({ id: nextTaskId++, x: mouse.gridX, y: mouse.gridY, tool: currentTool, action: 'build', tileType: recipe.tile, recipePop: recipe.pop, assigned: false, progress: 0, maxProgress: 60 });
+                                spawnFloatingText("建築指示", mouse.x, mouse.y, "#ffffff");
+                            } else {
+                                spawnFloatingText("資源不足", mouse.x, mouse.y, "#ef4444");
+                            }
+                        }
+                    }
+                }
+                updateUI();
+                return;
+            }
+
+            // --- 隣接マス（自身含む）は直接アクション ---
+            removeTaskAt(mouse.gridX, mouse.gridY); // すでにタスクがあれば消去して自分でやる
+
+            // 採集モード
+            if (currentTool === 'gather') {
+                if (targetTile === TILE.TREE) {
+                    world[mouse.gridY][mouse.gridX] = TILE.GRASS;
+                    inventory.wood += Math.floor(Math.random() * 2) + 1;
+                    spawnParticles(mouse.gridX, mouse.gridY, '#4ade80');
+                    spawnFloatingText("+木材", mouse.x, mouse.y, "#4ade80");
+                } 
+                else if (targetTile === TILE.ROCK) {
+                    world[mouse.gridY][mouse.gridX] = TILE.GRASS;
+                    inventory.stone += 1;
+                    spawnParticles(mouse.gridX, mouse.gridY, '#94a3b8');
+                    spawnFloatingText("+石材", mouse.x, mouse.y, "#94a3b8");
+                }
+                else if (targetTile === TILE.IRON) {
+                    world[mouse.gridY][mouse.gridX] = TILE.GRASS;
+                    inventory.iron += 1;
+                    spawnParticles(mouse.gridX, mouse.gridY, '#fb923c');
+                    spawnFloatingText("+鉄鉱石", mouse.x, mouse.y, "#fb923c");
+                }
+                else if (targetTile === TILE.HOUSE) {
+                    world[mouse.gridY][mouse.gridX] = TILE.GRASS;
+                    inventory.population = Math.max(0, inventory.population - 10);
+                    
+                    // 家を壊したら村人もランダムに2人減る
+                    for (let i = 0; i < 2; i++) {
+                        if (npcs.length > 0) {
+                            let removeIdx = Math.floor(Math.random() * npcs.length);
+                            spawnParticles(Math.floor(npcs[removeIdx].x), Math.floor(npcs[removeIdx].y), npcs[removeIdx].color);
+                            npcs.splice(removeIdx, 1);
+                        }
+                    }
+
+                    spawnParticles(mouse.gridX, mouse.gridY, '#fcd34d');
+                    spawnFloatingText("破壊しました", mouse.x, mouse.y, "#ef4444");
+                }
+                else if (targetTile === TILE.ROAD) {
+                    world[mouse.gridY][mouse.gridX] = TILE.GRASS;
+                    spawnParticles(mouse.gridX, mouse.gridY, '#94a3b8');
+                }
+            } 
+            // 建築モード
+            else {
+                // プレイヤーの立っている場所には建てられない
+                if (mouse.gridX === player.x && mouse.gridY === player.y) return;
+
+                if (targetTile === TILE.GRASS || targetTile === TILE.ROAD) {
+                    const recipe = RECIPES[currentTool];
+                    if (canAfford(recipe.cost)) {
+                        deductCost(recipe.cost);
+                        world[mouse.gridY][mouse.gridX] = recipe.tile;
+                        inventory.population += recipe.pop;
+
+                        // 家を建てたら村人を2人スポーン
+                        if (recipe.tile === TILE.HOUSE) {
+                            spawnNPC(mouse.gridX, mouse.gridY);
+                            spawnNPC(mouse.gridX, mouse.gridY);
+                        }
+
+                        spawnParticles(mouse.gridX, mouse.gridY, '#ffffff');
+                        if (recipe.pop > 0) spawnFloatingText("+" + recipe.pop + " 人口", mouse.x, mouse.y, "#fef08a");
+                    } else {
+                        spawnFloatingText("資源不足", mouse.x, mouse.y, "#ef4444");
+                    }
+                }
+            }
+            updateUI();
+        }
+
+        // --- タスクシステム用補助関数 ---
+        function removeTaskAt(x, y) {
+            let index = tasks.findIndex(t => t.x === x && t.y === y);
+            if (index !== -1) {
+                let task = tasks[index];
+                if (task.action === 'build') {
+                     const recipe = RECIPES[task.tool];
+                     if(recipe.cost.wood) inventory.wood += recipe.cost.wood;
+                     if(recipe.cost.stone) inventory.stone += recipe.cost.stone;
+                     if(recipe.cost.iron) inventory.iron += recipe.cost.iron;
+                }
+                for (let npc of npcs) {
+                    if (npc.task && npc.task.id === task.id) {
+                        npc.task = null;
+                        npc.state = 'idle';
+                    }
+                }
+                tasks.splice(index, 1);
+            }
+        }
+
+        function completeTask(task) {
+            if (task.action === 'gather') {
+                const targetTile = world[task.y][task.x];
+                if (targetTile === task.tileType) {
+                    if (targetTile === TILE.TREE) {
+                        world[task.y][task.x] = TILE.GRASS;
+                        inventory.wood += Math.floor(Math.random() * 2) + 1;
+                        spawnParticles(task.x, task.y, '#4ade80');
+                        spawnFloatingTextAtGrid("+木材", task.x, task.y, "#4ade80");
+                    } 
+                    else if (targetTile === TILE.ROCK) {
+                        world[task.y][task.x] = TILE.GRASS;
+                        inventory.stone += 1;
+                        spawnParticles(task.x, task.y, '#94a3b8');
+                        spawnFloatingTextAtGrid("+石材", task.x, task.y, "#94a3b8");
+                    }
+                    else if (targetTile === TILE.IRON) {
+                        world[task.y][task.x] = TILE.GRASS;
+                        inventory.iron += 1;
+                        spawnParticles(task.x, task.y, '#fb923c');
+                        spawnFloatingTextAtGrid("+鉄鉱石", task.x, task.y, "#fb923c");
+                    }
+                    else if (targetTile === TILE.HOUSE) {
+                        world[task.y][task.x] = TILE.GRASS;
+                        inventory.population = Math.max(0, inventory.population - 10);
+                        for (let i = 0; i < 2; i++) {
+                            if (npcs.length > 0) {
+                                let removeIdx = Math.floor(Math.random() * npcs.length);
+                                spawnParticles(Math.floor(npcs[removeIdx].x), Math.floor(npcs[removeIdx].y), npcs[removeIdx].color);
+                                if(npcs[removeIdx].task) npcs[removeIdx].task.assigned = false;
+                                npcs.splice(removeIdx, 1);
+                            }
+                        }
+                        spawnParticles(task.x, task.y, '#fcd34d');
+                        spawnFloatingTextAtGrid("破壊しました", task.x, task.y, "#ef4444");
+                    }
+                    else if (targetTile === TILE.ROAD) {
+                        world[task.y][task.x] = TILE.GRASS;
+                        spawnParticles(task.x, task.y, '#94a3b8');
+                    }
+                }
+            } else if (task.action === 'build') {
+                const targetTile = world[task.y][task.x];
+                if (targetTile === TILE.GRASS || targetTile === TILE.ROAD) {
+                     world[task.y][task.x] = task.tileType;
+                     inventory.population += task.recipePop;
+                     if (task.tileType === TILE.HOUSE) {
+                         spawnNPC(task.x, task.y);
+                         spawnNPC(task.x, task.y);
+                     }
+                     spawnParticles(task.x, task.y, '#ffffff');
+                     if (task.recipePop > 0) spawnFloatingTextAtGrid("+" + task.recipePop + " 人口", task.x, task.y, "#fef08a");
+                } else {
+                     const recipe = RECIPES[task.tool];
+                     if(recipe.cost.wood) inventory.wood += recipe.cost.wood;
+                     if(recipe.cost.stone) inventory.stone += recipe.cost.stone;
+                     if(recipe.cost.iron) inventory.iron += recipe.cost.iron;
+                     spawnFloatingTextAtGrid("建設中止", task.x, task.y, "#ef4444");
+                }
+            }
+            updateUI();
+        }
+
+        function getPath(startX, startY, targetX, targetY) {
+            let queue = [{x: startX, y: startY, path: []}];
+            let visited = new Set();
+            visited.add(`${startX},${startY}`);
+            let dirs = [{dx:0,dy:-1}, {dx:0,dy:1}, {dx:-1,dy:0}, {dx:1,dy:0}];
+            let iterations = 0;
+            
+            while(queue.length > 0 && iterations < 1000) {
+                iterations++;
+                let current = queue.shift();
+                
+                let dist = Math.max(Math.abs(current.x - targetX), Math.abs(current.y - targetY));
+                if (dist <= 1) return current.path;
+                
+                for (let d of dirs) {
+                    let nx = current.x + d.dx;
+                    let ny = current.y + d.dy;
+                    let key = `${nx},${ny}`;
+                    
+                    if (nx >= 0 && nx < WORLD_WIDTH && ny >= 0 && ny < WORLD_HEIGHT && !visited.has(key)) {
+                        if (nx === targetX && ny === targetY) continue; // ターゲット自身には乗らない
+                        if (world[ny][nx] === TILE.GRASS || world[ny][nx] === TILE.ROAD) {
+                            visited.add(key);
+                            queue.push({x: nx, y: ny, path: [...current.path, {x: nx, y: ny}]});
+                        }
+                    }
+                }
+            }
+            return null;
+        }
+
+        // ツール切替関数 (UIから呼ばれる)
+        window.setTool = function(tool) {
+            currentTool = tool;
+            document.querySelectorAll('.tool-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById(`btn-${tool}`).classList.add('active');
+        };
+
+        // コスト判定
+        function canAfford(cost) {
+            if (cost.wood && inventory.wood < cost.wood) return false;
+            if (cost.stone && inventory.stone < cost.stone) return false;
+            if (cost.iron && inventory.iron < cost.iron) return false;
+            return true;
+        }
+
+        function deductCost(cost) {
+            if (cost.wood) inventory.wood -= cost.wood;
+            if (cost.stone) inventory.stone -= cost.stone;
+            if (cost.iron) inventory.iron -= cost.iron;
+        }
+
+        // UI更新
+        function updateUI() {
+            document.getElementById('ui-wood').innerText = inventory.wood;
+            document.getElementById('ui-stone').innerText = inventory.stone;
+            document.getElementById('ui-iron').innerText = inventory.iron;
+            document.getElementById('ui-population').innerText = inventory.population;
+            
+            // 建築ボタンの表示更新（資源不足なら半透明に）
+            checkBtnStatus('house');
+            checkBtnStatus('road');
+        }
+
+        function checkBtnStatus(tool) {
+            const btn = document.getElementById(`btn-${tool}`);
+            if (canAfford(RECIPES[tool].cost)) {
+                btn.style.opacity = "1";
+            } else {
+                btn.style.opacity = "0.5";
+            }
+        }
+
+        // === ゲームループ・更新処理 ===
+        let lastMoveTime = 0;
+        
+        function update() {
+            const now = Date.now();
+            
+            // プレイヤー移動処理（グリッド単位、少しディレイを入れて連続移動を防ぐ）
+            if (now - lastMoveTime > 150) {
+                let dx = 0, dy = 0;
+                if (keys['w'] || keys['arrowup']) dy = -1;
+                else if (keys['s'] || keys['arrowdown']) dy = 1;
+                else if (keys['a'] || keys['arrowleft']) dx = -1;
+                else if (keys['d'] || keys['arrowright']) dx = 1;
+
+                if (dx !== 0 || dy !== 0) {
+                    let nextX = player.x + dx;
+                    let nextY = player.y + dy;
+                    
+                    // マップ境界チェック
+                    if (nextX >= 0 && nextX < WORLD_WIDTH && nextY >= 0 && nextY < WORLD_HEIGHT) {
+                        // 障害物チェック
+                        const targetTile = world[nextY][nextX];
+                        if (targetTile === TILE.GRASS || targetTile === TILE.ROAD) {
+                            player.x = nextX;
+                            player.y = nextY;
+                            lastMoveTime = now;
+                        }
+                    }
+                    
+                    // 向きの更新
+                    if (dx > 0) player.facing = 'right';
+                    if (dx < 0) player.facing = 'left';
+                    if (dy > 0) player.facing = 'down';
+                    if (dy < 0) player.facing = 'up';
+                }
+            }
+
+            // レンダリング座標の補間（滑らかな移動）
+            // 道(ROAD)の上にいる時は移動アニメーションが少し速い
+            const isOnRoad = world[player.y][player.x] === TILE.ROAD;
+            const lerpFactor = isOnRoad ? 0.3 : 0.2;
+            
+            player.renderX += (player.x * TILE_SIZE - player.renderX) * lerpFactor;
+            player.renderY += (player.y * TILE_SIZE - player.renderY) * lerpFactor;
+
+            // カメラの追従
+            camera.targetX = player.renderX - canvas.width / 2 + TILE_SIZE / 2;
+            camera.targetY = player.renderY - canvas.height / 2 + TILE_SIZE / 2;
+            camera.x += (camera.targetX - camera.x) * 0.1;
+            camera.y += (camera.targetY - camera.y) * 0.1;
+
+            // NPCの更新処理（AIステートマシン）
+            for (let npc of npcs) {
+                // タスクが外部から消された場合のケア
+                if (npc.task && !tasks.find(t => t.id === npc.task.id)) {
+                    npc.task = null;
+                    npc.state = 'idle';
+                }
+
+                npc.moveTimer--;
+
+                if (npc.state === 'idle') {
+                    if (npc.moveTimer <= 0) {
+                        let unassignedTasks = tasks.filter(t => !t.assigned);
+                        if (unassignedTasks.length > 0) {
+                            unassignedTasks.sort((a, b) => {
+                                let distA = Math.abs(a.x - npc.x) + Math.abs(a.y - npc.y);
+                                let distB = Math.abs(b.x - npc.x) + Math.abs(b.y - npc.y);
+                                return distA - distB;
+                            });
+                            
+                            let bestTask = unassignedTasks[0];
+                            let path = getPath(npc.x, npc.y, bestTask.x, bestTask.y);
+                            if (path) {
+                                bestTask.assigned = true;
+                                npc.task = bestTask;
+                                npc.path = path;
+                                npc.pathIndex = 0;
+                                npc.state = 'moving_to_task';
+                                npc.moveTimer = 0;
+                            } else {
+                                npc.moveTimer = 30; // パスなし、少し待機
+                            }
+                        } else {
+                            // タスクがないときはランダムウォーク
+                            const dirs = [
+                                {dx: 0, dy: -1, face: 'up'}, {dx: 0, dy: 1, face: 'down'},
+                                {dx: -1, dy: 0, face: 'left'}, {dx: 1, dy: 0, face: 'right'}
+                            ];
+                            let validDirs = dirs.filter(d => {
+                                let nx = npc.x + d.dx, ny = npc.y + d.dy;
+                                return nx >= 0 && nx < WORLD_WIDTH && ny >= 0 && ny < WORLD_HEIGHT && 
+                                       (world[ny][nx] === TILE.GRASS || world[ny][nx] === TILE.ROAD);
+                            });
+                            if (validDirs.length > 0) {
+                                let roadDirs = validDirs.filter(d => world[npc.y + d.dy][npc.x + d.dx] === TILE.ROAD);
+                                let chosenDir = (roadDirs.length > 0 && Math.random() < 0.6) ? 
+                                                roadDirs[Math.floor(Math.random() * roadDirs.length)] : 
+                                                validDirs[Math.floor(Math.random() * validDirs.length)];
+                                npc.x += chosenDir.dx;
+                                npc.y += chosenDir.dy;
+                                npc.facing = chosenDir.face;
+                            }
+                            npc.moveTimer = 40 + Math.random() * 80;
+                        }
+                    }
+                }
+                else if (npc.state === 'moving_to_task') {
+                    if (npc.moveTimer <= 0) {
+                        npc.moveTimer = world[npc.y][npc.x] === TILE.ROAD ? 12 : 20; // プレイヤーより少し遅い
+                        
+                        let distToTarget = Math.max(Math.abs(npc.x - npc.task.x), Math.abs(npc.y - npc.task.y));
+                        if (distToTarget <= 1) {
+                            npc.state = 'working';
+                            npc.moveTimer = 0;
+                        } else if (npc.pathIndex < npc.path.length) {
+                            let nextPos = npc.path[npc.pathIndex];
+                            
+                            // 誰かが道を塞いだ場合はタスクを一旦諦める
+                            if (world[nextPos.y][nextPos.x] !== TILE.GRASS && world[nextPos.y][nextPos.x] !== TILE.ROAD) {
+                                npc.task.assigned = false;
+                                npc.task = null;
+                                npc.state = 'idle';
+                            } else {
+                                if (nextPos.x > npc.x) npc.facing = 'right';
+                                else if (nextPos.x < npc.x) npc.facing = 'left';
+                                else if (nextPos.y > npc.y) npc.facing = 'down';
+                                else if (nextPos.y < npc.y) npc.facing = 'up';
+
+                                npc.x = nextPos.x;
+                                npc.y = nextPos.y;
+                                npc.pathIndex++;
+                            }
+                        } else {
+                            // 到着できなかった
+                            npc.task.assigned = false;
+                            npc.task = null;
+                            npc.state = 'idle';
+                        }
+                    }
+                }
+                else if (npc.state === 'working') {
+                    npc.task.progress++;
+                    
+                    if (npc.task.x > npc.x) npc.facing = 'right';
+                    else if (npc.task.x < npc.x) npc.facing = 'left';
+                    else if (npc.task.y > npc.y) npc.facing = 'down';
+                    else if (npc.task.y < npc.y) npc.facing = 'up';
+
+                    if (npc.task.progress % 10 === 0) {
+                        spawnParticles(npc.task.x, npc.task.y, '#ffffff');
+                    }
+
+                    if (npc.task.progress >= npc.task.maxProgress) {
+                        completeTask(npc.task);
+                        tasks = tasks.filter(t => t.id !== npc.task.id);
+                        npc.task = null;
+                        npc.state = 'idle';
+                        npc.moveTimer = 20;
+                    }
+                }
+
+                // NPCの滑らかな移動
+                const isOnRoadNPC = world[npc.y][npc.x] === TILE.ROAD;
+                const npcLerpFactor = isOnRoadNPC ? 0.3 : 0.2;
+                npc.renderX += (npc.x * TILE_SIZE - npc.renderX) * npcLerpFactor;
+                npc.renderY += (npc.y * TILE_SIZE - npc.renderY) * npcLerpFactor;
+            }
+
+            // パーティクル更新
+            for (let i = particles.length - 1; i >= 0; i--) {
+                let p = particles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.05;
+                if (p.type === 'text') p.y -= 0.5; // テキストは上に浮かぶ
+                if (p.life <= 0) particles.splice(i, 1);
+            }
+        }
+
+        // === 描画処理 ===
+        function draw() {
+            // 背景クリア（ダークグリーンのベース）
+            ctx.fillStyle = '#0f172a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 描画範囲の計算（カリング）
+            const startX = Math.max(0, Math.floor(camera.x / TILE_SIZE));
+            const startY = Math.max(0, Math.floor(camera.y / TILE_SIZE));
+            const endX = Math.min(WORLD_WIDTH, Math.floor((camera.x + canvas.width) / TILE_SIZE) + 2);
+            const endY = Math.min(WORLD_HEIGHT, Math.floor((camera.y + canvas.height) / TILE_SIZE) + 2);
+
+            ctx.save();
+            ctx.translate(-camera.x, -camera.y);
+
+            // 1. タイル描画
+            for (let y = startY; y < endY; y++) {
+                for (let x = startX; x < endX; x++) {
+                    const tile = world[y][x];
+                    const px = x * TILE_SIZE;
+                    const py = y * TILE_SIZE;
+
+                    // 草地ベース
+                    ctx.fillStyle = '#65a30d'; // ベースの緑
+                    ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+                    // グリッドの淡い線
+                    ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+                    ctx.strokeRect(px, py, TILE_SIZE, TILE_SIZE);
+
+                    if (tile === TILE.ROAD) {
+                        ctx.fillStyle = '#cbd5e1';
+                        ctx.fillRect(px + 2, py + 2, TILE_SIZE - 4, TILE_SIZE - 4);
+                    }
+                    else if (tile === TILE.TREE) {
+                        // 木の描画
+                        ctx.fillStyle = '#78350f'; // 幹
+                        ctx.fillRect(px + TILE_SIZE/2 - 4, py + TILE_SIZE/2, 8, 16);
+                        ctx.fillStyle = '#166534'; // 葉
+                        ctx.beginPath();
+                        ctx.arc(px + TILE_SIZE/2, py + TILE_SIZE/2 - 4, 14, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.fillStyle = '#22c55e'; // 葉のハイライト
+                        ctx.beginPath();
+                        ctx.arc(px + TILE_SIZE/2 - 3, py + TILE_SIZE/2 - 8, 6, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                    else if (tile === TILE.ROCK) {
+                        // 石の描画
+                        ctx.fillStyle = '#475569';
+                        ctx.beginPath();
+                        ctx.moveTo(px + 8, py + TILE_SIZE - 6);
+                        ctx.lineTo(px + TILE_SIZE/2, py + 10);
+                        ctx.lineTo(px + TILE_SIZE - 8, py + TILE_SIZE - 6);
+                        ctx.fill();
+                        ctx.fillStyle = '#94a3b8'; // ハイライト
+                        ctx.beginPath();
+                        ctx.moveTo(px + 8, py + TILE_SIZE - 6);
+                        ctx.lineTo(px + TILE_SIZE/2, py + 10);
+                        ctx.lineTo(px + TILE_SIZE/2, py + TILE_SIZE - 6);
+                        ctx.fill();
+                    }
+                    else if (tile === TILE.IRON) {
+                        // 鉄の描画 (ベースは石と同じで色違い)
+                        ctx.fillStyle = '#334155';
+                        ctx.beginPath();
+                        ctx.moveTo(px + 8, py + TILE_SIZE - 6);
+                        ctx.lineTo(px + TILE_SIZE/2, py + 12);
+                        ctx.lineTo(px + TILE_SIZE - 8, py + TILE_SIZE - 6);
+                        ctx.fill();
+                        // 鉄の鉱脈（オレンジの斑点）
+                        ctx.fillStyle = '#f97316';
+                        ctx.fillRect(px + 14, py + 26, 6, 6);
+                        ctx.fillRect(px + 24, py + 18, 5, 5);
+                        ctx.fillRect(px + 28, py + 30, 7, 5);
+                    }
+                    else if (tile === TILE.HOUSE) {
+                        // 家の描画
+                        ctx.fillStyle = '#e2e8f0'; // 壁
+                        ctx.fillRect(px + 6, py + 20, TILE_SIZE - 12, TILE_SIZE - 24);
+                        ctx.fillStyle = '#94a3b8'; // ドア
+                        ctx.fillRect(px + TILE_SIZE/2 - 6, py + 28, 12, 16);
+                        ctx.fillStyle = '#ea580c'; // 屋根
+                        ctx.beginPath();
+                        ctx.moveTo(px + 2, py + 20);
+                        ctx.lineTo(px + TILE_SIZE/2, py + 4);
+                        ctx.lineTo(px + TILE_SIZE - 2, py + 20);
+                        ctx.fill();
+                    }
+                }
+            }
+
+            // 1.5 タスクマーカーの描画
+            for (let task of tasks) {
+                const px = task.x * TILE_SIZE;
+                const py = task.y * TILE_SIZE;
+
+                ctx.save();
+                ctx.translate(px, py);
+                
+                if (task.action === 'gather') {
+                    ctx.strokeStyle = 'rgba(239, 68, 68, 0.8)';
+                    ctx.lineWidth = 2;
+                    ctx.setLineDash([4, 4]);
+                    ctx.strokeRect(4, 4, TILE_SIZE - 8, TILE_SIZE - 8);
+                    ctx.setLineDash([]);
+                    ctx.fillStyle = 'rgba(239, 68, 68, 0.1)';
+                    ctx.fillRect(4, 4, TILE_SIZE - 8, TILE_SIZE - 8);
+                } else if (task.action === 'build') {
+                    ctx.strokeStyle = 'rgba(59, 130, 246, 0.8)';
+                    ctx.lineWidth = 2;
+                    ctx.setLineDash([4, 4]);
+                    ctx.strokeRect(4, 4, TILE_SIZE - 8, TILE_SIZE - 8);
+                    ctx.setLineDash([]);
+                    
+                    ctx.globalAlpha = 0.5;
+                    if (task.tileType === TILE.ROAD) {
+                        ctx.fillStyle = '#cbd5e1';
+                        ctx.fillRect(2, 2, TILE_SIZE - 4, TILE_SIZE - 4);
+                    } else if (task.tileType === TILE.HOUSE) {
+                        ctx.fillStyle = '#e2e8f0'; 
+                        ctx.fillRect(6, 20, TILE_SIZE - 12, TILE_SIZE - 24);
+                        ctx.fillStyle = '#ea580c'; 
+                        ctx.beginPath();
+                        ctx.moveTo(2, 20);
+                        ctx.lineTo(TILE_SIZE/2, 4);
+                        ctx.lineTo(TILE_SIZE - 2, 20);
+                        ctx.fill();
+                    }
+                    ctx.globalAlpha = 1.0;
+                }
+
+                if (task.progress > 0) {
+                    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+                    ctx.fillRect(4, -10, TILE_SIZE - 8, 6);
+                    ctx.fillStyle = '#4ade80';
+                    ctx.fillRect(5, -9, (TILE_SIZE - 10) * (task.progress / task.maxProgress), 4);
+                }
+
+                ctx.restore();
+            }
+
+            // 2. カーソルホバーのハイライト描画
+            if (mouse.isHovering) {
+                const dist = Math.max(Math.abs(mouse.gridX - player.x), Math.abs(mouse.gridY - player.y));
+                const isValidTarget = dist <= 1 && !(mouse.gridX === player.x && mouse.gridY === player.y);
+                
+                ctx.lineWidth = 2;
+                if (isValidTarget) {
+                    ctx.strokeStyle = currentTool === 'gather' ? 'rgba(255, 255, 255, 0.7)' : 'rgba(134, 239, 172, 0.8)'; // 白か緑
+                    ctx.fillStyle = currentTool === 'gather' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(134, 239, 172, 0.2)';
+                } else {
+                    ctx.strokeStyle = 'rgba(239, 68, 68, 0.5)'; // 遠い場所は赤
+                    ctx.fillStyle = 'rgba(239, 68, 68, 0.1)';
+                }
+                ctx.beginPath();
+                ctx.roundRect(mouse.gridX * TILE_SIZE + 2, mouse.gridY * TILE_SIZE + 2, TILE_SIZE - 4, TILE_SIZE - 4, 8);
+                ctx.stroke();
+                ctx.fill();
+            }
+
+            // 3. プレイヤー描画
+            ctx.save();
+            ctx.translate(player.renderX + TILE_SIZE/2, player.renderY + TILE_SIZE/2);
+            
+            // 影
+            ctx.fillStyle = 'rgba(0,0,0,0.3)';
+            ctx.beginPath();
+            ctx.ellipse(0, 14, 12, 6, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // 本体 (スタイリッシュなカプセル形状)
+            ctx.fillStyle = '#3b82f6'; // 鮮やかな青
+            ctx.beginPath();
+            ctx.roundRect(-10, -16, 20, 28, 10);
+            ctx.fill();
+
+            // 顔（向きによって位置が変わる）
+            ctx.fillStyle = 'white';
+            let eyeOffsetX = 0, eyeOffsetY = 0;
+            if (player.facing === 'right') eyeOffsetX = 4;
+            if (player.facing === 'left') eyeOffsetX = -4;
+            if (player.facing === 'up') eyeOffsetY = -4;
+            if (player.facing === 'down') eyeOffsetY = 2;
+
+            if (player.facing !== 'up') {
+                // 目
+                ctx.beginPath();
+                ctx.arc(-4 + eyeOffsetX, -6 + eyeOffsetY, 3, 0, Math.PI*2);
+                ctx.arc(4 + eyeOffsetX, -6 + eyeOffsetY, 3, 0, Math.PI*2);
+                ctx.fill();
+            }
+            ctx.restore();
+
+            // 3.5 NPC描画
+            for (let npc of npcs) {
+                // カメラ範囲外のNPCはカリング
+                if (npc.renderX < camera.x - TILE_SIZE || npc.renderX > camera.x + canvas.width ||
+                    npc.renderY < camera.y - TILE_SIZE || npc.renderY > camera.y + canvas.height) {
+                    continue;
+                }
+
+                ctx.save();
+                ctx.translate(npc.renderX + TILE_SIZE/2, npc.renderY + TILE_SIZE/2);
+                ctx.scale(0.8, 0.8); // プレイヤーより一回り小さくする
+                
+                // 影
+                ctx.fillStyle = 'rgba(0,0,0,0.3)';
+                ctx.beginPath();
+                ctx.ellipse(0, 14, 12, 6, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                // 本体
+                ctx.fillStyle = npc.color; 
+                ctx.beginPath();
+                ctx.roundRect(-10, -16, 20, 28, 10);
+                ctx.fill();
+
+                // 顔
+                ctx.fillStyle = 'white';
+                let ex = 0, ey = 0;
+                if (npc.facing === 'right') ex = 4;
+                if (npc.facing === 'left') ex = -4;
+                if (npc.facing === 'up') ey = -4;
+                if (npc.facing === 'down') ey = 2;
+
+                if (npc.facing !== 'up') {
+                    ctx.beginPath();
+                    ctx.arc(-4 + ex, -6 + ey, 3, 0, Math.PI*2);
+                    ctx.arc(4 + ex, -6 + ey, 3, 0, Math.PI*2);
+                    ctx.fill();
+                }
+                ctx.restore();
+            }
+
+            // 4. パーティクル描画
+            for (let p of particles) {
+                if (p.type === 'rect') {
+                    ctx.fillStyle = p.color + Math.floor(p.life * 255).toString(16).padStart(2, '0');
+                    ctx.fillRect(p.x, p.y, p.size, p.size);
+                } else if (p.type === 'text') {
+                    ctx.font = 'bold 16px "Noto Sans JP"';
+                    ctx.fillStyle = p.color;
+                    ctx.globalAlpha = p.life;
+                    ctx.textAlign = 'center';
+                    // 黒枠をつけて見やすく
+                    ctx.lineWidth = 2;
+                    ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+                    ctx.strokeText(p.text, p.x, p.y);
+                    ctx.fillText(p.text, p.x, p.y);
+                    ctx.globalAlpha = 1.0;
+                }
+            }
+
+            ctx.restore();
+        }
+
+        // === エフェクト補助関数 ===
+        function spawnParticles(gridX, gridY, color) {
+            const centerX = gridX * TILE_SIZE + TILE_SIZE / 2;
+            const centerY = gridY * TILE_SIZE + TILE_SIZE / 2;
+            for (let i = 0; i < 8; i++) {
+                particles.push({
+                    type: 'rect',
+                    x: centerX + (Math.random() - 0.5) * 20,
+                    y: centerY + (Math.random() - 0.5) * 20,
+                    vx: (Math.random() - 0.5) * 4,
+                    vy: (Math.random() - 0.5) * 4 - 1, // 少し上へ跳ねる
+                    size: Math.random() * 6 + 4,
+                    color: color,
+                    life: 1.0
+                });
+            }
+        }
+
+        function spawnFloatingText(text, screenX, screenY, color) {
+            // スクリーン座標からワールド座標に変換してパーティクルとして登録
+            particles.push({
+                type: 'text',
+                text: text,
+                x: screenX + camera.x,
+                y: screenY + camera.y - 10,
+                vx: 0,
+                vy: -0.5,
+                color: color,
+                life: 1.5
+            });
+        }
+
+        function spawnFloatingTextAtGrid(text, gridX, gridY, color) {
+            particles.push({
+                type: 'text',
+                text: text,
+                x: gridX * TILE_SIZE + TILE_SIZE / 2,
+                y: gridY * TILE_SIZE - 10,
+                vx: 0,
+                vy: -0.5,
+                color: color,
+                life: 1.5
+            });
+        }
+
+        // === メインループ ===
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // 起動
+        window.onload = init;
+    </script>
+</body>
+</html>
