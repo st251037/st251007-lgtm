@@ -3,53 +3,32 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>スタイリッシュ 2D マイクラ風街づくりゲーム</title>
+    <title>PIONEER VALLEY - NPC Edition</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&display=swap');
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; font-family: 'Noto Sans JP', sans-serif; background-color: #1e293b; }
         #gameCanvas { display: block; width: 100%; height: 100%; }
-        .glass-panel { background: rgba(255, 255, 255, 0.15); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.3); box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.2); }
-        .tool-btn { transition: all 0.2s ease; }
-        .tool-btn:hover { background: rgba(255, 255, 255, 0.3); transform: translateY(-2px); }
-        .tool-btn.active { background: rgba(59, 130, 246, 0.5); border-color: rgba(96, 165, 250, 1); box-shadow: 0 0 15px rgba(59, 130, 246, 0.5); }
-        .no-select { user-select: none; -webkit-user-select: none; }
+        .glass-panel { background: rgba(255, 255, 255, 0.15); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.3); }
+        .tool-btn { transition: all 0.2s; }
+        .tool-btn.active { background: rgba(59, 130, 246, 0.5); border-color: #60a5fa; }
     </style>
 </head>
-<body class="text-white no-select">
+<body class="text-white select-none">
 
     <canvas id="gameCanvas"></canvas>
 
     <div class="absolute inset-0 pointer-events-none flex flex-col justify-between p-4 sm:p-6">
-        <div class="flex justify-between items-start">
-            <div class="glass-panel rounded-2xl p-4 pointer-events-auto flex flex-col gap-3 min-w-[200px]">
-                <h1 class="text-xl font-bold tracking-wider text-white shadow-sm">PIONEER <span class="text-blue-300">VALLEY</span></h1>
-                <div class="flex items-center gap-2 text-sm text-gray-100">
-                    <span>人口: <span id="ui-population" class="font-bold text-lg text-white">0</span> 人</span>
-                </div>
-                <div class="h-px bg-white/20 w-full my-1"></div>
-                <div class="flex flex-col gap-2 text-sm font-medium">
-                    <div class="flex justify-between items-center bg-black/20 rounded px-2 py-1">
-                        <span class="flex items-center gap-2"><div class="w-3 h-3 rounded-full bg-emerald-500"></div> 木材</span>
-                        <span id="ui-wood">0</span>
-                    </div>
-                    <div class="flex justify-between items-center bg-black/20 rounded px-2 py-1">
-                        <span class="flex items-center gap-2"><div class="w-3 h-3 bg-gray-400 rounded-sm"></div> 石材</span>
-                        <span id="ui-stone">0</span>
-                    </div>
-                    <div class="flex justify-between items-center bg-black/20 rounded px-2 py-1">
-                        <span class="flex items-center gap-2"><div class="w-3 h-3 bg-slate-600 rounded-sm border border-orange-400"></div> 鉄鉱石</span>
-                        <span id="ui-iron">0</span>
-                    </div>
-                </div>
-            </div>
+        <div class="glass-panel rounded-2xl p-4 pointer-events-auto w-48">
+            <h1 class="font-bold text-blue-300">PIONEER VALLEY</h1>
+            <div class="text-sm mt-2">人口: <span id="ui-population">0</span></div>
+            <div class="text-xs text-gray-300 mt-2">木材: <span id="ui-wood">0</span> | 石材: <span id="ui-stone">0</span></div>
         </div>
 
         <div class="flex justify-center w-full mb-4">
-            <div class="glass-panel rounded-full p-2 pointer-events-auto flex gap-2 shadow-2xl">
-                <button class="tool-btn active flex items-center gap-2 px-4 py-2 rounded-full font-bold text-sm" onclick="setTool('gather')" id="btn-gather">採集 (壊す)</button>
-                <button class="tool-btn flex items-center gap-2 px-4 py-2 rounded-full font-bold text-sm" onclick="setTool('house')" id="btn-house">家を作る</button>
-                <button class="tool-btn flex items-center gap-2 px-4 py-2 rounded-full font-bold text-sm" onclick="setTool('road')" id="btn-road">道を敷く</button>
+            <div class="glass-panel rounded-full p-2 pointer-events-auto flex gap-2">
+                <button class="tool-btn active px-4 py-2 rounded-full text-sm" onclick="setTool('gather')" id="btn-gather">採集</button>
+                <button class="tool-btn px-4 py-2 rounded-full text-sm" onclick="setTool('house')" id="btn-house">家(木10石5)</button>
             </div>
         </div>
     </div>
@@ -57,155 +36,113 @@
     <script>
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
-
         const TILE_SIZE = 48;
-        const WORLD_WIDTH = 50;
-        const WORLD_HEIGHT = 50;
-        const TILE = { GRASS: 0, TREE: 1, ROCK: 2, IRON: 3, HOUSE: 4, ROAD: 5 };
-        const RECIPES = {
-            house: { cost: { wood: 10, stone: 5 }, tile: TILE.HOUSE, pop: 10 },
-            road:  { cost: { stone: 2 }, tile: TILE.ROAD, pop: 0 }
-        };
+        const WORLD_SIZE = 50;
+        const TILE = { GRASS: 0, TREE: 1, ROCK: 2, HOUSE: 3 };
 
-        // --- ゲーム状態 ---
         let world = [];
-        let inventory = { wood: 10, stone: 5, iron: 0, population: 0 }; // 初期資源を少し付与
+        let npcs = [];
+        let inventory = { wood: 20, stone: 10, population: 0 };
         let currentTool = 'gather';
-        let gameTime = 0;
-        const DAY_LENGTH = 3000; 
-        let initialResourceCounts = { tree: 0, rock: 0, iron: 0 };
-        
-        let player = { x: 25, y: 25, renderX: 25 * TILE_SIZE, renderY: 25 * TILE_SIZE };
+        let player = { x: 25, y: 25, renderX: 25*48, renderY: 25*48 };
         let camera = { x: 0, y: 0 };
         let keys = {};
 
-        // --- 初期化 ---
+        // 初期化
         function init() {
-            resizeCanvas();
-            window.addEventListener('resize', resizeCanvas);
-            window.addEventListener('keydown', (e) => keys[e.key.toLowerCase()] = true);
-            window.addEventListener('keyup', (e) => keys[e.key.toLowerCase()] = false);
-            canvas.addEventListener('mousedown', handleMouseClick);
-            
-            generateWorld();
-            updateUI();
-            requestAnimationFrame(gameLoop);
-        }
-
-        function resizeCanvas() {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
-        }
-
-        function generateWorld() {
-            for (let y = 0; y < WORLD_HEIGHT; y++) {
+            
+            // ワールド生成
+            for(let y=0; y<WORLD_SIZE; y++){
                 world[y] = [];
-                for (let x = 0; x < WORLD_WIDTH; x++) {
-                    if (Math.abs(x - player.x) < 3 && Math.abs(y - player.y) < 3) {
-                        world[y][x] = TILE.GRASS;
-                        continue;
-                    }
+                for(let x=0; x<WORLD_SIZE; x++){
                     let r = Math.random();
-                    if (r < 0.15) world[y][x] = TILE.TREE;
-                    else if (r < 0.22) world[y][x] = TILE.ROCK;
-                    else if (r < 0.25) world[y][x] = TILE.IRON;
-                    else world[y][x] = TILE.GRASS;
+                    world[y][x] = r < 0.1 ? TILE.TREE : (r < 0.15 ? TILE.ROCK : TILE.GRASS);
                 }
             }
-            initialResourceCounts.tree = world.flat().filter(t => t === TILE.TREE).length;
-            initialResourceCounts.rock = world.flat().filter(t => t === TILE.ROCK).length;
-            initialResourceCounts.iron = world.flat().filter(t => t === TILE.IRON).length;
+            world[25][25] = TILE.GRASS; // スポーン地点
+
+            window.addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
+            window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+            canvas.addEventListener('mousedown', handleInteract);
+
+            updateUI();
+            gameLoop();
         }
 
-        // --- 資源再生システム ---
-        function checkResources() {
-            const counts = {
-                tree: world.flat().filter(t => t === TILE.TREE).length,
-                rock: world.flat().filter(t => t === TILE.ROCK).length,
-                iron: world.flat().filter(t => t === TILE.IRON).length
-            };
-
-            if (counts.tree < initialResourceCounts.tree * 0.1) spawnRandom(TILE.TREE, 5);
-            if (counts.rock < initialResourceCounts.rock * 0.1) spawnRandom(TILE.ROCK, 3);
-            if (counts.iron < initialResourceCounts.iron * 0.1) spawnRandom(TILE.IRON, 2);
-        }
-
-        function spawnRandom(type, amount) {
-            let count = 0;
-            while (count < amount) {
-                let rx = Math.floor(Math.random() * WORLD_WIDTH);
-                let ry = Math.floor(Math.random() * WORLD_HEIGHT);
-                if (world[ry][rx] === TILE.GRASS && (rx !== player.x || ry !== player.y)) {
-                    world[ry][rx] = type;
-                    count++;
-                }
-            }
-        }
-
-        // --- クリック処理 ---
-        function handleMouseClick(e) {
+        // インタラクション（プレイヤーの行動 + NPCへの指示）
+        function handleInteract(e) {
             const rect = canvas.getBoundingClientRect();
-            const mouseX = e.clientX - rect.left;
-            const mouseY = e.clientY - rect.top;
-            const gx = Math.floor((mouseX + camera.x) / TILE_SIZE);
-            const gy = Math.floor((mouseY + camera.y) / TILE_SIZE);
+            const gx = Math.floor((e.clientX - rect.left + camera.x) / TILE_SIZE);
+            const gy = Math.floor((e.clientY - rect.top + camera.y) / TILE_SIZE);
 
-            if (gx < 0 || gx >= WORLD_WIDTH || gy < 0 || gy >= WORLD_HEIGHT) return;
+            if(gx < 0 || gx >= WORLD_SIZE || gy < 0 || gy >= WORLD_SIZE) return;
 
-            const dist = Math.abs(gx - player.x) + Math.abs(gy - player.y);
-            if (dist > 2) return; // 届く範囲を制限
+            const dist = Math.abs(gx - Math.round(player.x)) + Math.abs(gy - Math.round(player.y));
 
-            if (currentTool === 'gather') {
-                const t = world[gy][gx];
-                if (t === TILE.TREE) { inventory.wood += 2; world[gy][gx] = TILE.GRASS; }
-                if (t === TILE.ROCK) { inventory.stone += 1; world[gy][gx] = TILE.GRASS; }
-                if (t === TILE.IRON) { inventory.iron += 1; world[gy][gx] = TILE.GRASS; }
+            if (dist <= 2) {
+                // プレイヤーが直接作業
+                executeAction(gx, gy);
             } else {
-                const recipe = RECIPES[currentTool];
-                if (world[gy][gx] === TILE.GRASS && canAfford(recipe.cost)) {
-                    deductCost(recipe.cost);
-                    world[gy][gx] = recipe.tile;
-                    inventory.population += recipe.pop;
+                // 遠くは一番近いNPCに「仕事」として投げる（簡易版）
+                const nearestNPC = npcs.find(n => n.state === 'idle');
+                if (nearestNPC) {
+                    nearestNPC.targetX = gx;
+                    nearestNPC.targetY = gy;
+                    nearestNPC.state = 'moving';
                 }
             }
             updateUI();
         }
 
-        function canAfford(cost) {
-            return (!cost.wood || inventory.wood >= cost.wood) && (!cost.stone || inventory.stone >= cost.stone);
-        }
-        function deductCost(cost) {
-            if (cost.wood) inventory.wood -= cost.wood;
-            if (cost.stone) inventory.stone -= cost.stone;
+        function executeAction(x, y) {
+            if (currentTool === 'gather') {
+                if (world[y][x] === TILE.TREE) { inventory.wood += 2; world[y][x] = TILE.GRASS; }
+                if (world[y][x] === TILE.ROCK) { inventory.stone += 1; world[y][x] = TILE.GRASS; }
+            } else if (currentTool === 'house') {
+                if (world[y][x] === TILE.GRASS && inventory.wood >= 10 && inventory.stone >= 5) {
+                    inventory.wood -= 10; inventory.stone -= 5;
+                    world[y][x] = TILE.HOUSE;
+                    inventory.population += 2;
+                    spawnNPC(x, y); // 家を建てると村人登場
+                }
+            }
         }
 
-        // --- メインループ ---
-        function gameLoop() {
-            update();
-            draw();
-            requestAnimationFrame(gameLoop);
+        function spawnNPC(x, y) {
+            npcs.push({ x: x, y: y, renderX: x*TILE_SIZE, renderY: y*TILE_SIZE, state: 'idle', targetX: null, targetY: null });
         }
 
         function update() {
-            // 移動
-            let speed = 1;
-            if (keys['w'] && player.y > 0) player.y -= 0.1;
-            if (keys['s'] && player.y < WORLD_HEIGHT-1) player.y += 0.1;
-            if (keys['a'] && player.x > 0) player.x -= 0.1;
-            if (keys['d'] && player.x < WORLD_WIDTH-1) player.x += 0.1;
+            // プレイヤー移動
+            if (keys['w']) player.y -= 0.1;
+            if (keys['s']) player.y += 0.1;
+            if (keys['a']) player.x -= 0.1;
+            if (keys['d']) player.x += 0.1;
 
             player.renderX = player.x * TILE_SIZE;
             player.renderY = player.y * TILE_SIZE;
+            camera.x = player.renderX - canvas.width/2;
+            camera.y = player.renderY - canvas.height/2;
 
-            // カメラ追従
-            camera.x = player.renderX - canvas.width / 2;
-            camera.y = player.renderY - canvas.height / 2;
-
-            // 資源チェック
-            if (Math.random() < 0.01) checkResources();
-            
-            // 時間経過
-            gameTime = (gameTime + 1) % DAY_LENGTH;
+            // NPCの動き
+            npcs.forEach(npc => {
+                if (npc.state === 'moving') {
+                    let dx = npc.targetX - npc.x;
+                    let dy = npc.targetY - npc.y;
+                    let dist = Math.sqrt(dx*dx + dy*dy);
+                    if (dist < 0.1) {
+                        executeAction(npc.targetX, npc.targetY);
+                        npc.state = 'idle';
+                    } else {
+                        npc.x += dx * 0.05;
+                        npc.y += dy * 0.05;
+                    }
+                }
+                npc.renderX = npc.x * TILE_SIZE;
+                npc.renderY = npc.y * TILE_SIZE;
+            });
         }
 
         function draw() {
@@ -213,40 +150,42 @@
             ctx.save();
             ctx.translate(-camera.x, -camera.y);
 
-            // タイル描画
-            for (let y = 0; y < WORLD_HEIGHT; y++) {
-                for (let x = 0; x < WORLD_WIDTH; x++) {
-                    let color = "#34d399"; // Grass
-                    if (world[y][x] === TILE.TREE) color = "#059669";
-                    if (world[y][x] === TILE.ROCK) color = "#94a3b8";
-                    if (world[y][x] === TILE.IRON) color = "#f97316";
-                    if (world[y][x] === TILE.HOUSE) color = "#fca5a5";
-                    if (world[y][x] === TILE.ROAD) color = "#475569";
-                    
-                    ctx.fillStyle = color;
-                    ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE - 1, TILE_SIZE - 1);
+            // マップ
+            for(let y=0; y<WORLD_SIZE; y++) {
+                for(let x=0; x<WORLD_SIZE; x++) {
+                    if(world[y][x] === TILE.GRASS) ctx.fillStyle = '#34d399';
+                    else if(world[y][x] === TILE.TREE) ctx.fillStyle = '#059669';
+                    else if(world[y][x] === TILE.ROCK) ctx.fillStyle = '#94a3b8';
+                    else if(world[y][x] === TILE.HOUSE) ctx.fillStyle = '#fca5a5';
+                    ctx.fillRect(x*TILE_SIZE, y*TILE_SIZE, TILE_SIZE-1, TILE_SIZE-1);
                 }
             }
 
-            // プレイヤー描画
-            ctx.fillStyle = "#ffffff";
+            // NPC
+            npcs.forEach(npc => {
+                ctx.fillStyle = '#f59e0b';
+                ctx.fillRect(npc.renderX+12, npc.renderY+12, 24, 24);
+            });
+
+            // プレイヤー
+            ctx.fillStyle = 'white';
             ctx.beginPath();
             ctx.arc(player.renderX + TILE_SIZE/2, player.renderY + TILE_SIZE/2, 15, 0, Math.PI*2);
             ctx.fill();
 
             ctx.restore();
+        }
 
-            // 昼夜演出
-            let progress = gameTime / DAY_LENGTH;
-            let opacity = 0;
-            if (progress > 0.4 && progress < 0.6) opacity = (progress - 0.4) * 2;
-            else if (progress >= 0.6 && progress < 0.8) opacity = 0.4;
-            else if (progress >= 0.8) opacity = (1 - progress) * 2;
-            
-            if (opacity > 0) {
-                ctx.fillStyle = `rgba(0, 0, 50, ${opacity})`;
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-            }
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function updateUI() {
+            document.getElementById('ui-wood').innerText = inventory.wood;
+            document.getElementById('ui-stone').innerText = inventory.stone;
+            document.getElementById('ui-population').innerText = inventory.population;
         }
 
         window.setTool = (t) => {
@@ -254,13 +193,6 @@
             document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
             document.getElementById('btn-' + t).classList.add('active');
         };
-
-        function updateUI() {
-            document.getElementById('ui-wood').innerText = inventory.wood;
-            document.getElementById('ui-stone').innerText = inventory.stone;
-            document.getElementById('ui-iron').innerText = inventory.iron;
-            document.getElementById('ui-population').innerText = inventory.population;
-        }
 
         init();
     </script>
