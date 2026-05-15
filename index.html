@@ -152,6 +152,7 @@
         const NPC_COLORS = ['#ef4444', '#f59e0b', '#10b981', '#8b5cf6', '#ec4899', '#06b6d4']; // 村人のカラーバリエーション
 
         // ゲームステート
+       
         let world = [];
         let particles = [];
         let npcs = []; // 追加: 村人の配列
@@ -159,6 +160,10 @@
         let nextTaskId = 0;
         let inventory = { wood: 0, stone: 0, iron: 0, population: 0 };
         let currentTool = 'gather'; // gather, house, road
+        // --- 昼夜と資源管理用の変数をここに追加！ ---
+let gameTime = 0; 
+const DAY_LENGTH = 2000; 
+let initialResourceCounts = { tree: 0, rock: 0, iron: 0 };
         
         // カメラステート
         let camera = { x: 0, y: 0, targetX: 0, targetY: 0 };
@@ -241,7 +246,10 @@
                     else world[y][x] = TILE.GRASS;
                 }
             }
-        }
+     // (generateWorldの一番最後に追加)
+    initialResourceCounts.tree = world.flat().filter(t => t === TILE.TREE).length;
+    initialResourceCounts.rock = world.flat().filter(t => t === TILE.ROCK).length;
+    initialResourceCounts.iron = world.flat().filter(t => t === TILE.IRON).length;   }
 
         // === 入力とインタラクション ===
         function handleMouseMove(e) {
@@ -359,7 +367,28 @@
                         spawnFloatingText("資源不足", mouse.x, mouse.y, "#ef4444");
                     }
                 }
-            }
+        // 資源が減ったら補充する仕組み
+function checkAndRespawnResources() {
+    let currentTree = world.flat().filter(t => t === TILE.TREE).length;
+    if (currentTree < initialResourceCounts.tree * 0.1) {
+        respawnResource(TILE.TREE, 5); // 1割以下なら5本生やす
+    }
+    // 石と鉄も同様にチェック...
+    if (world.flat().filter(t => t === TILE.ROCK).length < initialResourceCounts.rock * 0.1) respawnResource(TILE.ROCK, 3);
+    if (world.flat().filter(t => t === TILE.IRON).length < initialResourceCounts.iron * 0.1) respawnResource(TILE.IRON, 2);
+}
+
+function respawnResource(type, amount) {
+    let spawned = 0;
+    while (spawned < amount) {
+        let rx = Math.floor(Math.random() * WORLD_WIDTH);
+        let ry = Math.floor(Math.random() * WORLD_HEIGHT);
+        if (world[ry][rx] === TILE.GRASS) {
+            world[ry][rx] = type;
+            spawned++;
+        }
+    }
+}  checkAndRespawnResources();  }
             updateUI();
         }
 
@@ -837,7 +866,7 @@
                     ctx.fillStyle = '#4ade80';
                     ctx.fillRect(5, -9, (TILE_SIZE - 10) * (task.progress / task.maxProgress), 4);
                 }
-
+drawDayNightCycle();
                 ctx.restore();
             }
 
